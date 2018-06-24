@@ -17,3 +17,4 @@ Init
 - Generate an SSH key
 - Install Neovim
   - Clone configuration from GitHub
+- Install i3wm, i3bar, and dmenu

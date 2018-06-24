@@ -6,33 +6,86 @@ $COLS = 80
 $DIVIDER = '#'
 
 def dnf_y(cmd)
-    return system("sudo dnf -y #{cmd}")
+  return system("sudo dnf -y #{cmd}")
 end
 
 def rel_to_home(path)
-    return File.join(ENV['HOME'], path)
+  return File.join(ENV['HOME'], path)
 end
 
 def puts_line
-    $COLS.times { print $DIVIDER }
-    puts
+  $COLS.times { print $DIVIDER }
+  puts
 end
 
 def puts_divider(text)
-    puts
-    puts_line
-    puts "#{$DIVIDER} #{text}"
-    puts_line
-    puts
+  puts
+  puts_line
+  puts "#{$DIVIDER} #{text}"
+  puts_line
+  puts
 end
 
 def puts_output(text)
-    puts ">>> #{text}"
+  puts ">>> #{text}"
 end
 
 def wait
-    puts_output('Press enter to continue...')
-    gets
+  puts_output('Press enter to continue...')
+  gets
+end
+
+class InitializationTask
+  def apply
+    pre
+    if should?
+      execute
+    else
+      noop
+    end
+    post
+  end
+
+  def should?
+    true
+  end
+
+  def pre
+  end
+
+  def post
+  end
+
+  def execute
+  end
+
+  def noop
+  end
+end
+
+class FileMissingTask < InitializationTask
+  def initialize(file, startup, noop, action)
+    @file = file
+    @startup = startup
+    @noop = noop
+    @action = action
+  end
+
+  def should?
+    !File.exists?(@file) 
+  end
+
+  def pre
+    puts_output @startup
+  end
+
+  def noop
+    puts_output @noop
+  end
+
+  def execute
+    @action.call(@file)
+  end
 end
 
 puts_divider 'Now bootstrapped into Ruby!'
@@ -44,38 +97,62 @@ dnf_y('install google-chrome-stable')
 
 puts_divider "SSH Configuration"
 
-# Generate an SSH Key
-puts_output "Configuring SSH key"
 PUBLIC_KEYFILE = rel_to_home('.ssh/id_rsa.pub')
-if File.exist?(PUBLIC_KEYFILE)
-    puts_output "Key already exists!"
-else
+FileMissingTask.new(
+  PUBLIC_KEYFILE,
+  'Configuring SSH key...',
+  'An SSH key already exists. Skipping...',
+  Proc.new do
     puts_output 'No key found. Generating new key...'
     system('ssh-keygen')
     puts_output 'Key generated! Put this key into your GitHub account now.'
     File.open(PUBLIC_KEYFILE, 'r') do |public_keyfile|
-        puts
-	puts public_keyfile.read
-	puts
-	wait
+      puts
+      puts public_keyfile.read
+      puts
+      wait
     end
-end
+  end
+).apply()
 
 # Set up NeoVim
 puts_divider('Neovim Configuration')
 
-# Install neovim and missing jemalloc dependency (as of time of script creation)
+# Install
 puts_output 'Installing Neovim...'
 dnf_y('install neovim jemalloc')
 
 # Configure Neovim
 CONFIG_DIR = rel_to_home('.config')
 NVIM_DIR = File.join(CONFIG_DIR, 'nvim')
-FileUtils::mkdir_p CONFIG_DIR
-if File.exist?(NVIM_DIR) && File.directory?(NVIM_DIR)
-    puts_output 'A Neovim configuration already exists. Skipping.'
-else
+
+FileMissingTask.new(
+  NVIM_DIR,
+  'Cloning Neovim configuration...',
+  'A Neovim configuration already exists. Skipping...',
+  Proc.new do 
     puts_output 'Cloning Neovim RC...'
+    FileUtils::mkdir_p CONFIG_DIR
     system "git clone --recursive git@github.com:Bourg/neovim.git #{NVIM_DIR}"
     puts_output 'Neovim RC successfully cloned!'
-end
+  end).apply()
+
+puts_divider('i3wm Configuration')
+
+# Set up i3wm
+puts_output 'Installing i3'
+dnf_y "install i3 i3status dmenu i3lock feh"
+
+puts_output 'Configuring i3'
+I3_DIR = File.join(CONFIG_DIR, 'i3')
+FileMissingTask.new(
+  I3_DIR,
+  'Cloning i3 configuration...',
+  'An i3 configuration already exists. Skipping...',
+  Proc.new do
+    puts_output 'Cloning i3 config...'
+    FileUtils::mkdir_p CONFIG_DIR
+    system "git clone git@github.com:Bourg/i3.git #{I3_DIR}"
+    puts_output 'i3 config successfully cloned!'
+  end
+).apply()
